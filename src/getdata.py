@@ -3,6 +3,7 @@ import time
 import os
 import sys
 import math
+import re
 from PIL import Image
 from io import BytesIO
 
@@ -17,13 +18,12 @@ if sys.stdout.encoding != 'utf-8':
 # -------------------------------
 OUTPUT_DIR = "danske_luftfotos"
 API_KEY = os.getenv("DATAFORDELEREN_API_KEY", "8es9KqcaNPEcfFjXGq9MTPzptU1hIbK2HQ7eKeaFbKMplWGMxw8RNztJK4I5yuaVIZSu5J7jVSs7Nruml5ckbi2MlUEvQfh6J")
-DAWA_ADGANGSADRESSER_URL = os.getenv("DAWA_ADGANGSADRESSER_URL", "https://api.dataforsyningen.dk/adgangsadresser")
+DAR_GRAPHQL_URL = os.getenv("DATAFORDELEREN_DAR_GRAPHQL_URL", "https://graphql.datafordeler.dk/DAR/v1")
 BBR_GRAPHQL_URL = os.getenv("DATAFORDELEREN_BBR_GRAPHQL_URL", "https://graphql.datafordeler.dk/BBR/v1")
 ANTAL = 50
 BILLEDE_STØRRELSE = 1024  # px
 OMRÅDE_ET_ARK = 50  # meter (crop 50x50 meter omkring hus)
 EGNEDE_BYGNINGSANVENDELSER = {"110", "120", "121", "122", "130", "131", "132"}
-MAX_DAWA_SIDER = 20
 
 # Opret mappe
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -56,6 +56,43 @@ class GraphQlClient:
         return payload.get("data") or {}
 
 
+HUSNUMMER_QUERY = """
+query HentHusnumre($first: Int!, $timestamp: DafDateTime!) {
+  DAR_Husnummer(
+    first: $first
+    registreringstid: $timestamp
+    virkningstid: $timestamp
+    where: { status: { eq: "3" } }
+  ) {
+    nodes {
+      id_lokalId
+      adgangsadressebetegnelse
+      adgangspunkt
+    }
+  }
+}
+"""
+
+
+ADRESSEPUNKT_QUERY = """
+query HentAdressepunkter($ids: [String!], $timestamp: DafDateTime!) {
+  DAR_Adressepunkt(
+    first: 100
+    registreringstid: $timestamp
+    virkningstid: $timestamp
+    where: { id_lokalId: { in: $ids } }
+  ) {
+    nodes {
+      id_lokalId
+      position {
+        wkt
+      }
+    }
+  }
+}
+"""
+
+
 BBR_BYGNING_QUERY = """
 query HentBygninger($ids: [String!], $timestamp: DafDateTime!) {
   BBR_Bygning(
@@ -77,81 +114,59 @@ query HentBygninger($ids: [String!], $timestamp: DafDateTime!) {
 """
 
 
-def hent_parcelhuse(antal=100, session=None, bbr_client=None):
+def hent_parcelhuse(antal=100, client=None, bbr_client=None):
     """Hent danske huse, som er egnede til tagrende-træningsdata."""
-    session = session or requests.Session()
-    if bbr_client is None:
+    bruger_injiceret_client = client is not None
+    if client is None:
         if API_KEY.startswith("DIN_API"):
             raise GraphQlError("DATAFORDELEREN_API_KEY mangler. Sæt den i miljøet før scriptet køres.")
-        bbr_client = GraphQlClient(BBR_GRAPHQL_URL, API_KEY)
+        client = GraphQlClient(DAR_GRAPHQL_URL, API_KEY)
+    if bbr_client is None:
+        bbr_client = client if bruger_injiceret_client else GraphQlClient(BBR_GRAPHQL_URL, API_KEY)
 
     timestamp = _now_iso()
+    data = client.execute(HUSNUMMER_QUERY, {"first": max(antal * 5, antal), "timestamp": timestamp})
+    husnumre = data.get("DAR_Husnummer", {}).get("nodes", [])
+    husnummer_ids = [node.get("id_lokalId") for node in husnumre if node.get("id_lokalId")]
+    egnede_bygninger = _hent_egnede_bygninger(bbr_client, husnummer_ids, timestamp)
+
+    egnede_husnumre = [
+        node for node in husnumre
+        if node.get("id_lokalId") in egnede_bygninger and node.get("adgangspunkt")
+    ]
+    point_ids = [node.get("adgangspunkt") for node in egnede_husnumre]
+
+    adressepunkter = {}
+    for chunk in _chunks(point_ids, 100):
+        point_data = client.execute(ADRESSEPUNKT_QUERY, {"ids": chunk, "timestamp": timestamp})
+        for point in point_data.get("DAR_Adressepunkt", {}).get("nodes", []):
+            adressepunkter[point.get("id_lokalId")] = point
+
     adresser = []
-    sete_adresser = set()
-    for side in range(1, MAX_DAWA_SIDER + 1):
-        adgangsadresser = _hent_dawa_adgangsadresser(antal, session, side)
-        if not adgangsadresser:
+    for node in egnede_husnumre:
+        point = adressepunkter.get(node.get("adgangspunkt"))
+        wkt = (point or {}).get("position", {}).get("wkt")
+        if not wkt:
+            continue
+
+        x, y = _parse_point_wkt(wkt)
+        lng, lat = _epsg25832_to_wgs84(x, y)
+        bygning = egnede_bygninger[node.get("id_lokalId")]
+        adresser.append({
+            "id": node.get("id_lokalId"),
+            "adresse": node.get("adgangsadressebetegnelse"),
+            "lng": lng,
+            "lat": lat,
+            "bbr_bygning_id": bygning.get("id_lokalId"),
+            "bbr_bygningsnummer": bygning.get("byg007Bygningsnummer"),
+            "bbr_anvendelse": bygning.get("byg021BygningensAnvendelse"),
+            "bebygget_areal_m2": _number_value(bygning.get("byg041BebyggetAreal")),
+        })
+
+        if len(adresser) >= antal:
             break
 
-        adresser_med_koordinater = [adresse for adresse in adgangsadresser if _dawa_coordinates(adresse)]
-        husnummer_ids = [
-            adresse.get("id")
-            for adresse in adresser_med_koordinater
-            if adresse.get("id") and adresse.get("id") not in sete_adresser
-        ]
-        egnede_bygninger = _hent_egnede_bygninger(bbr_client, husnummer_ids, timestamp)
-
-        for adresse in adresser_med_koordinater:
-            if adresse.get("id") in sete_adresser or adresse.get("id") not in egnede_bygninger:
-                continue
-
-            lng, lat = _dawa_coordinates(adresse)
-            bygning = egnede_bygninger[adresse.get("id")]
-            adresser.append({
-                "id": adresse.get("id"),
-                "adresse": adresse.get("adressebetegnelse") or adresse.get("betegnelse"),
-                "lng": lng,
-                "lat": lat,
-                "bbr_bygning_id": bygning.get("id_lokalId"),
-                "bbr_bygningsnummer": bygning.get("byg007Bygningsnummer"),
-                "bbr_anvendelse": bygning.get("byg021BygningensAnvendelse"),
-                "bebygget_areal_m2": _number_value(bygning.get("byg041BebyggetAreal")),
-            })
-            sete_adresser.add(adresse.get("id"))
-
-            if len(adresser) >= antal:
-                return adresser
-
     return adresser
-
-
-def _hent_dawa_adgangsadresser(antal, session, side):
-    response = session.get(
-        DAWA_ADGANGSADRESSER_URL,
-        params={
-            "per_side": min(max(antal * 5, antal), 100),
-            "side": side,
-            "struktur": "mini",
-        },
-        headers={"accept": "application/json"},
-        timeout=30,
-    )
-    response.raise_for_status()
-    return response.json()
-
-
-def _dawa_coordinates(adresse):
-    if isinstance(adresse.get("x"), (int, float)) and isinstance(adresse.get("y"), (int, float)):
-        return adresse["x"], adresse["y"]
-
-    coordinates = (adresse.get("adgangspunkt") or {}).get("koordinater")
-    if not isinstance(coordinates, list) or len(coordinates) != 2:
-        return None
-
-    lng, lat = coordinates
-    if not isinstance(lng, (int, float)) or not isinstance(lat, (int, float)):
-        return None
-    return lng, lat
 
 
 def _hent_egnede_bygninger(client, husnummer_ids, timestamp):
@@ -201,6 +216,56 @@ def _chunks(values, size):
     for index in range(0, len(values), size):
         yield values[index:index + size]
 
+
+def _parse_point_wkt(wkt):
+    match = re.match(r"POINT\s*\(\s*([0-9.]+)\s+([0-9.]+)\s*\)", wkt)
+    if not match:
+        raise GraphQlError(f"Ukendt WKT-punktformat: {wkt}")
+    return float(match.group(1)), float(match.group(2))
+
+
+def _epsg25832_to_wgs84(easting, northing):
+    """Convert ETRS89 / UTM zone 32N (EPSG:25832) to WGS84 lon/lat."""
+    a = 6378137.0
+    f = 1 / 298.257222101
+    k0 = 0.9996
+    lon0 = math.radians(9.0)
+    e2 = f * (2 - f)
+    ep2 = e2 / (1 - e2)
+
+    x = easting - 500000.0
+    y = northing
+    m = y / k0
+    mu = m / (a * (1 - e2 / 4 - 3 * e2**2 / 64 - 5 * e2**3 / 256))
+
+    e1 = (1 - math.sqrt(1 - e2)) / (1 + math.sqrt(1 - e2))
+    j1 = 3 * e1 / 2 - 27 * e1**3 / 32
+    j2 = 21 * e1**2 / 16 - 55 * e1**4 / 32
+    j3 = 151 * e1**3 / 96
+    j4 = 1097 * e1**4 / 512
+    fp = mu + j1 * math.sin(2 * mu) + j2 * math.sin(4 * mu) + j3 * math.sin(6 * mu) + j4 * math.sin(8 * mu)
+
+    sin_fp = math.sin(fp)
+    cos_fp = math.cos(fp)
+    tan_fp = math.tan(fp)
+    c1 = ep2 * cos_fp**2
+    t1 = tan_fp**2
+    n1 = a / math.sqrt(1 - e2 * sin_fp**2)
+    r1 = a * (1 - e2) / (1 - e2 * sin_fp**2) ** 1.5
+    d = x / (n1 * k0)
+
+    lat = fp - (n1 * tan_fp / r1) * (
+        d**2 / 2
+        - (5 + 3 * t1 + 10 * c1 - 4 * c1**2 - 9 * ep2) * d**4 / 24
+        + (61 + 90 * t1 + 298 * c1 + 45 * t1**2 - 252 * ep2 - 3 * c1**2) * d**6 / 720
+    )
+    lon = lon0 + (
+        d
+        - (1 + 2 * t1 + c1) * d**3 / 6
+        + (5 - 2 * c1 + 28 * t1 - 3 * c1**2 + 8 * ep2 + 24 * t1**2) * d**5 / 120
+    ) / cos_fp
+
+    return math.degrees(lon), math.degrees(lat)
 
 # -------------------------------
 # 2. Hent luftfoto fra SDFI (WMTS)
