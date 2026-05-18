@@ -1,6 +1,6 @@
 import type { QuoteRecord } from './types'
 
-const baseUrl = import.meta.env.VITE_GATEWAY_URL ?? 'http://localhost:4010'
+const baseUrl = typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:3000` : 'http://localhost:3000'
 
 export async function listQuotes(): Promise<QuoteRecord[]> {
   const response = await fetch(`${baseUrl}/api/quotes`)

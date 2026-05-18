@@ -1,14 +1,15 @@
 services:
   gateway:
     build:
-      context: ./apps/gateway
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/gateway/Dockerfile
     ports:
       - "3000:3000"
     environment:
       - GATEWAY_PORT=3000
       - DATABASE_URL=postgresql://tagrende:tagrende@postgres:5432/tagrende_quote
       - REDIS_URL=redis://redis:6379
+      - DATAFORDELEREN_API_KEY=${DATAFORDELEREN_API_KEY:-}
       - QUOTE_WORKER_URL=http://worker:4020
     depends_on:
       - postgres
@@ -21,28 +22,27 @@ services:
     environment:
       - DATABASE_URL=postgresql://tagrende:tagrende@postgres:5432/tagrende_quote
       - REDIS_URL=redis://redis:6379
+      - DATAFORDELEREN_API_KEY=${DATAFORDELEREN_API_KEY:-}
     depends_on:
       - redis
       - postgres
 
   widget:
     build:
-      context: ./apps/widget
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/widget/Dockerfile
     ports:
       - "8081:80"
 
   admin:
     build:
-      context: ./apps/admin
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/admin/Dockerfile
     ports:
       - "8082:80"
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
 
   postgres:
     image: postgis/postgis:16-3.4
@@ -50,8 +50,6 @@ services:
       POSTGRES_DB: tagrende_quote
       POSTGRES_USER: tagrende
       POSTGRES_PASSWORD: tagrende
-    ports:
-      - "5432:5432"
     volumes:
       - tagrende-postgres:/var/lib/postgresql/data
 

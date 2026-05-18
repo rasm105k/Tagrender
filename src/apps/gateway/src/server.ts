@@ -19,6 +19,17 @@ export async function buildServer() {
 
   const quotes = new QuoteRepository()
 
+  app.get('/', async () => ({
+    name: 'TagrendeQuote Gateway',
+    status: 'ok',
+    endpoints: {
+      health: '/health',
+      addressSearch: '/api/addresses?q=...',
+      instantEstimate: 'POST /api/estimates/instant',
+      requestQuote: 'POST /api/quotes/request',
+      quotes: '/api/quotes',
+    },
+  }))
   app.get('/health', async () => ({ status: 'ok' }))
   await registerAddressRoutes(app)
   await registerEstimateRoutes(app)

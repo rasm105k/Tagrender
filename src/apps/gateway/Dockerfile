@@ -1,18 +1,13 @@
 # Build phase
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY package*.json tsconfig.json ./
-RUN npm ci
-COPY src ./src
-RUN npm run build
-
-# Production phase
 FROM node:20-alpine
 WORKDIR /app
-ENV NODE_ENV=production
-COPY package*.json ./
-RUN npm ci --only=production
-COPY --from=builder /app/dist ./dist
+COPY package.json tsconfig.base.json ./
+COPY apps/gateway/package.json apps/gateway/tsconfig.json ./apps/gateway/
+RUN npm install --workspace @tagrende-quote/gateway --include-workspace-root
+COPY apps/gateway/src ./apps/gateway/src
+RUN npm run build -w @tagrende-quote/gateway
 
-EXPOSE 3000
-CMD ["node", "dist/index.js"]
+ENV NODE_ENV=production
+
+EXPOSE 8082
+CMD ["node", "apps/gateway/dist/index.js"]

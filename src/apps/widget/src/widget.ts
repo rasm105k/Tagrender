@@ -67,7 +67,7 @@ export class TagrendeQuoteWidget {
   private estimate: InstantEstimate | null = null
 
   constructor(private readonly options: WidgetOptions) {
-    this.apiBaseUrl = options.apiBaseUrl ?? 'http://localhost:4010'
+    this.apiBaseUrl = options.apiBaseUrl ?? 'http://localhost:3000'
     this.root = options.target.attachShadow({ mode: 'open' })
     this.render()
   }

@@ -34,7 +34,7 @@ const verifiedQuoteSchema = z.object({
 export async function registerQuoteRoutes(app: FastifyInstance, repository: QuoteRepository) {
   const bbr = new BbrService()
   const queue = new QuoteQueue()
-  const worker = new QuoteWorkerClient(env.QUOTE_WORKER_URL)
+  const worker = new QuoteWorkerClient("http://localhost:4020")
 
   app.get('/api/quotes', async () => repository.list())
 
