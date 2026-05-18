@@ -6,6 +6,7 @@ import math
 import re
 from PIL import Image
 from io import BytesIO
+from roboflow import Roboflow
 
 # Ensure UTF-8 output on Windows
 if sys.stdout.encoding != 'utf-8':
@@ -21,6 +22,7 @@ API_KEY = os.getenv("DATAFORDELEREN_API_KEY", "8es9KqcaNPEcfFjXGq9MTPzptU1hIbK2H
 DAR_GRAPHQL_URL = os.getenv("DATAFORDELEREN_DAR_GRAPHQL_URL", "https://graphql.datafordeler.dk/DAR/v1")
 BBR_GRAPHQL_URL = os.getenv("DATAFORDELEREN_BBR_GRAPHQL_URL", "https://graphql.datafordeler.dk/BBR/v1")
 ANTAL = 50
+POSTAL_CODE = "6900"
 BILLEDE_STØRRELSE = 1024  # px
 OMRÅDE_ET_ARK = 50  # meter (crop 50x50 meter omkring hus)
 EGNEDE_BYGNINGSANVENDELSER = {"110", "120", "121", "122", "130", "131", "132"}
@@ -56,24 +58,43 @@ class GraphQlClient:
         return payload.get("data") or {}
 
 
-HUSNUMMER_QUERY = """
-query HentHusnumre($first: Int!, $timestamp: DafDateTime!) {
-  DAR_Husnummer(
-    first: $first
-    registreringstid: $timestamp
-    virkningstid: $timestamp
-    where: { status: { eq: "3" } }
-  ) {
+POSTNUMMER_QUERY = """
+query Hentpostnummer($postnumber : String!) {
+  DAR_Postnummer(
+    first: 10
+    registreringstid: "2026-05-18T13:03:00.979007Z"
+    where: {
+        postnr: {eq: $postnumber}
+    }
+    ) {
     nodes {
-      id_lokalId
-      adgangsadressebetegnelse
-      adgangspunkt
+    id_lokalId
+      postnr
     }
   }
 }
 """
 
-
+HUSNUMMER_QUERY = """
+query HentHusnumre($first: Int!, $timestamp: DafDateTime!, $postalnumber: String!) {
+  DAR_Husnummer(
+    first: $first
+    registreringstid: $timestamp
+    virkningstid: $timestamp
+    where: {
+      status: {eq: "3"}
+      postnummer:  {eq: $postalnumber} 
+      }
+  ) {
+    nodes {
+      id_lokalId
+      adgangsadressebetegnelse
+      adgangspunkt
+      postnummer
+    }
+  }
+}
+"""
 ADRESSEPUNKT_QUERY = """
 query HentAdressepunkter($ids: [String!], $timestamp: DafDateTime!) {
   DAR_Adressepunkt(
@@ -114,18 +135,16 @@ query HentBygninger($ids: [String!], $timestamp: DafDateTime!) {
 """
 
 
-def hent_parcelhuse(antal=100, client=None, bbr_client=None):
-    """Hent danske huse, som er egnede til tagrende-træningsdata."""
-    bruger_injiceret_client = client is not None
-    if client is None:
-        if API_KEY.startswith("DIN_API"):
-            raise GraphQlError("DATAFORDELEREN_API_KEY mangler. Sæt den i miljøet før scriptet køres.")
-        client = GraphQlClient(DAR_GRAPHQL_URL, API_KEY)
-    if bbr_client is None:
-        bbr_client = client if bruger_injiceret_client else GraphQlClient(BBR_GRAPHQL_URL, API_KEY)
+def hent_parcelhuse(antal=100):
+    
+    client = GraphQlClient(DAR_GRAPHQL_URL, API_KEY)
+    bbr_client = GraphQlClient(BBR_GRAPHQL_URL, API_KEY)
 
     timestamp = _now_iso()
-    data = client.execute(HUSNUMMER_QUERY, {"first": max(antal * 5, antal), "timestamp": timestamp})
+    postalnumberResponse = client.execute(POSTNUMMER_QUERY, {"postnumber": POSTAL_CODE})
+    postalNumber = postalnumberResponse.get("DAR_Postnummer", {}).get("nodes", [])[0].get("id_lokalId");
+
+    data = client.execute(HUSNUMMER_QUERY, {"first": max(antal * 5, antal), "timestamp": timestamp, "postalnumber": postalNumber})
     husnumre = data.get("DAR_Husnummer", {}).get("nodes", [])
     husnummer_ids = [node.get("id_lokalId") for node in husnumre if node.get("id_lokalId")]
     egnede_bygninger = _hent_egnede_bygninger(bbr_client, husnummer_ids, timestamp)
@@ -353,44 +372,24 @@ def gem_billede_og_csv():
     adresser = hent_parcelhuse(ANTAL)
     print(f"✅ Fundet {len(adresser)} adresser. Henter billeder...")
 
-    metadata = []
+    rf = Roboflow(api_key="krahG06tKULy3Qf0cr3f")
+    workspace = rf.workspace("rasmuss-workspace-afetg")
+    project = workspace.project("in-the-gutters")
 
     for i, adr in enumerate(adresser, 1):
         print(f"🖼️  {i}/{ANTAL}: {adr['adresse']}")
 
         img = hent_luftfoto(adr["lng"], adr["lat"], API_KEY, BILLEDE_STØRRELSE)
 
-        if img:
-            filnavn = f"billede_{i:03d}.png"
-            sti = os.path.join(OUTPUT_DIR, filnavn)
-            img.save(sti, "PNG")
-            print(f"   ✅ Gemt: {filnavn}")
+        filnavn = f"billede_{i:03d}.png"
+        sti = os.path.join(OUTPUT_DIR, filnavn)
+        img.save(sti, "PNG")
+        
+        project.upload(sti)
 
-            metadata.append({
-                "id": adr["id"],
-                "filnavn": filnavn,
-                "adresse": adr["adresse"],
-                "lng": adr["lng"],
-                "lat": adr["lat"],
-                "bbr_bygning_id": adr.get("bbr_bygning_id"),
-                "bbr_bygningsnummer": adr.get("bbr_bygningsnummer"),
-                "bbr_anvendelse": adr.get("bbr_anvendelse"),
-                "bebygget_areal_m2": adr.get("bebygget_areal_m2"),
-            })
-        else:
-            print(f"   ❌ Kunne ikke hente billede")
+        print(f"   ✅ Uploaded image to Roboflow: {filnavn}")
 
-    # Gem metadata
-    with open(os.path.join(OUTPUT_DIR, "adresser.csv"), "w", encoding="utf-8") as f:
-        f.write("id;filnavn;adresse;lng;lat;bbr_bygning_id;bbr_bygningsnummer;bbr_anvendelse;bebygget_areal_m2\n")
-        for m in metadata:
-            f.write(
-                f"{m['id']};{m['filnavn']};{m['adresse']};{m['lng']};{m['lat']};"
-                f"{m.get('bbr_bygning_id')};{m.get('bbr_bygningsnummer')};"
-                f"{m.get('bbr_anvendelse')};{m.get('bebygget_areal_m2')}\n"
-            )
-
-    print(f"🎉 Færdig! {len(metadata)} billeder gemt i mappen '{OUTPUT_DIR}'")
+    print(f"🎉 Færdig! billeder gemt i mappen '{OUTPUT_DIR}'")
     print("📌 Upload .png-filerne til Roboflow for annotering.")
 
 # -------------------------------
