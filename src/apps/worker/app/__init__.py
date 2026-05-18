@@ -1,0 +1,1 @@
+"""TagrendeQuote image worker."""

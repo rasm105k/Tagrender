@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TagrendeQuote Widget Demo</title>
+    <style>
+      body {
+        margin: 0;
+        background: #f4f5f7;
+        color: #111827;
+        font-family: Inter, system-ui, sans-serif;
+      }
+
+      main {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 48px 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Tagrenderens demo</h1>
+      <p>Widgetten nedenfor er isoleret i Shadow DOM.</p>
+      <div data-tagrende-quote data-api-base-url="http://localhost:4010"></div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

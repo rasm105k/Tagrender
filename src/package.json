@@ -1,0 +1,22 @@
+{
+  "name": "tagrende-quote",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-driven gutter cleaning quote SaaS for Danish contractors.",
+  "type": "module",
+  "workspaces": [
+    "apps/widget",
+    "apps/gateway",
+    "apps/admin"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev:widget": "npm run dev -w @tagrende-quote/widget",
+    "dev:gateway": "npm run dev -w @tagrende-quote/gateway",
+    "dev:admin": "npm run dev -w @tagrende-quote/admin",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}
