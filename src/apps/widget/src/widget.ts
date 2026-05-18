@@ -1,5 +1,3 @@
-import { styles } from './styles'
-
 type WidgetOptions = {
   target: Element
   apiBaseUrl?: string
@@ -60,6 +58,157 @@ class ApiClientError extends Error {
   }
 }
 
+const STYLES = `
+  :host {
+    all: initial;
+    color: #111827;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    font-family: inherit;
+  }
+
+  .card {
+    width: min(100%, 440px);
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 10px 30px rgba(17, 24, 39, 0.08);
+    overflow: hidden;
+  }
+
+  .header {
+    padding: 18px 18px 14px;
+    border-bottom: 1px solid #f3f4f6;
+  }
+
+  h2 {
+    margin: 0;
+    font-size: 18px;
+    line-height: 1.25;
+    letter-spacing: 0;
+  }
+
+  .subtitle {
+    margin: 6px 0 0;
+    color: #6b7280;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .body {
+    padding: 16px 18px 18px;
+  }
+
+  label {
+    display: block;
+    margin-bottom: 6px;
+    color: #4b5563;
+    font-size: 12px;
+    font-weight: 650;
+  }
+
+  input {
+    width: 100%;
+    min-height: 40px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: #111827;
+    font-size: 14px;
+    outline: none;
+  }
+
+  input:focus {
+    border-color: #111827;
+    box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.08);
+  }
+
+  button {
+    min-height: 40px;
+    border: 0;
+    border-radius: 6px;
+    background: #111827;
+    color: #fff;
+    padding: 8px 12px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .stack {
+    display: grid;
+    gap: 12px;
+  }
+
+  .row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .row > * {
+    flex: 1;
+  }
+
+  .suggestions {
+    display: grid;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .suggestion {
+    width: 100%;
+    min-height: 34px;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    color: #111827;
+    text-align: left;
+    font-weight: 550;
+  }
+
+  .estimate {
+    display: grid;
+    gap: 8px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #f9fafb;
+    padding: 12px;
+  }
+
+  .price {
+    font-size: 28px;
+    font-weight: 800;
+  }
+
+  .meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    color: #6b7280;
+    font-size: 12px;
+  }
+
+  .status {
+    border-radius: 6px;
+    background: #f3f4f6;
+    padding: 8px 10px;
+    color: #374151;
+    font-size: 13px;
+  }
+
+  .error {
+    background: #fef2f2;
+    color: #991b1b;
+  }
+`
+
 export class TagrendeQuoteWidget {
   private readonly root: ShadowRoot
   private readonly apiBaseUrl: string
@@ -74,7 +223,7 @@ export class TagrendeQuoteWidget {
 
   private render() {
     this.root.innerHTML = `
-      <style>${styles}</style>
+      <style>${STYLES}</style>
       <section class="card">
         <div class="header">
           <h2>Få pris på tagrenderens</h2>
@@ -107,55 +256,55 @@ export class TagrendeQuoteWidget {
       </section>
     `
 
-    this.addressInput.addEventListener('input', () => this.handleAddressInput())
-    this.quoteButton.addEventListener('click', () => this.requestQuote())
+    this.el('#address').addEventListener('input', () => this.handleAddressInput())
+    this.el('#quote').addEventListener('click', () => this.requestQuote())
   }
 
   private async handleAddressInput() {
-    const query = this.addressInput.value.trim()
+    const query = this.el('#address', HTMLInputElement).value.trim()
     this.selectedAddress = null
     this.estimate = null
-    this.quoteButton.disabled = true
-    this.estimateContainer.innerHTML = ''
-    this.contactContainer.hidden = true
+    this.el('#quote', HTMLButtonElement).disabled = true
+    this.el('#estimate', HTMLDivElement).innerHTML = ''
+    this.el('#contact', HTMLDivElement).hidden = true
 
     if (query.length < 3) {
-      this.suggestionsContainer.innerHTML = ''
+      this.el('#suggestions', HTMLDivElement).innerHTML = ''
       return
     }
 
     try {
       const suggestions = await this.getJson<AddressSuggestion[]>(`/api/addresses?q=${encodeURIComponent(query)}`)
-      this.suggestionsContainer.innerHTML = suggestions
+      this.el('#suggestions', HTMLDivElement).innerHTML = suggestions
         .slice(0, 5)
         .map((suggestion, index) => `<button class="suggestion" data-index="${index}" type="button">${escapeHtml(suggestion.label)}</button>`)
         .join('')
 
-      this.suggestionsContainer.querySelectorAll<HTMLButtonElement>('.suggestion').forEach(button => {
+      this.el('#suggestions', HTMLDivElement).querySelectorAll<HTMLButtonElement>('.suggestion').forEach(button => {
         button.addEventListener('click', () => {
           const suggestion = suggestions[Number(button.dataset.index)]
           void this.selectAddress(suggestion)
         })
       })
     } catch (error) {
-      this.setStatus(formatAddressError(error), true)
+      this.setStatus(formatError(error, 'address'), true)
     }
   }
 
   private async selectAddress(address: AddressSuggestion) {
     this.selectedAddress = address
-    this.addressInput.value = address.label
-    this.suggestionsContainer.innerHTML = ''
+    this.el('#address', HTMLInputElement).value = address.label
+    this.el('#suggestions', HTMLDivElement).innerHTML = ''
     this.setStatus('Beregner hurtigt estimat...')
 
     try {
       this.estimate = await this.postJson<InstantEstimate>('/api/estimates/instant', { address })
       this.renderEstimate(this.estimate)
-      this.contactContainer.hidden = false
-      this.quoteButton.disabled = false
+      this.el('#contact', HTMLDivElement).hidden = false
+      this.el('#quote', HTMLButtonElement).disabled = false
       this.setStatus('')
     } catch (error) {
-      this.setStatus(formatEstimateError(error), true)
+      this.setStatus(formatError(error, 'estimate'), true)
     }
   }
 
@@ -166,7 +315,7 @@ export class TagrendeQuoteWidget {
       maximumFractionDigits: 0,
     })
 
-    this.estimateContainer.innerHTML = `
+    this.el('#estimate', HTMLDivElement).innerHTML = `
       <div class="estimate">
         <div class="price">${formatter.format(estimate.price.min)} - ${formatter.format(estimate.price.max)}</div>
         <div class="meta">
@@ -182,7 +331,7 @@ export class TagrendeQuoteWidget {
   private async requestQuote() {
     if (!this.selectedAddress || !this.estimate) return
 
-    this.quoteButton.disabled = true
+    this.el('#quote', HTMLButtonElement).disabled = true
     this.setStatus('Sender til verifikation...')
 
     try {
@@ -190,15 +339,15 @@ export class TagrendeQuoteWidget {
         address: this.selectedAddress,
         estimateId: this.estimate.estimateId,
         customer: {
-          name: this.nameInput.value.trim(),
-          phone: this.phoneInput.value.trim(),
+          name: this.el('#name', HTMLInputElement).value.trim(),
+          phone: this.el('#phone', HTMLInputElement).value.trim(),
         },
       })
 
       this.setStatus(`Tak. Tilbuddet er sendt til kontrol. Reference: ${response.quoteId}`)
     } catch (error) {
-      this.quoteButton.disabled = false
-      this.setStatus(formatQuoteError(error), true)
+      this.el('#quote', HTMLButtonElement).disabled = false
+      this.setStatus(formatError(error, 'quote'), true)
     }
   }
 
@@ -227,40 +376,12 @@ export class TagrendeQuoteWidget {
     return this.options.tenantKey ? { 'x-tenant-key': this.options.tenantKey } : {}
   }
 
+  private el<T extends Element = Element>(selector: string, ctor?: new () => T): T {
+    return this.root.querySelector(selector) as T
+  }
+
   private setStatus(text: string, error = false) {
-    this.statusContainer.innerHTML = text ? `<div class="status ${error ? 'error' : ''}">${escapeHtml(text)}</div>` : ''
-  }
-
-  private get addressInput() {
-    return this.root.querySelector<HTMLInputElement>('#address')!
-  }
-
-  private get nameInput() {
-    return this.root.querySelector<HTMLInputElement>('#name')!
-  }
-
-  private get phoneInput() {
-    return this.root.querySelector<HTMLInputElement>('#phone')!
-  }
-
-  private get quoteButton() {
-    return this.root.querySelector<HTMLButtonElement>('#quote')!
-  }
-
-  private get suggestionsContainer() {
-    return this.root.querySelector<HTMLDivElement>('#suggestions')!
-  }
-
-  private get estimateContainer() {
-    return this.root.querySelector<HTMLDivElement>('#estimate')!
-  }
-
-  private get contactContainer() {
-    return this.root.querySelector<HTMLDivElement>('#contact')!
-  }
-
-  private get statusContainer() {
-    return this.root.querySelector<HTMLDivElement>('#status')!
+    this.el('#status', HTMLDivElement).innerHTML = text ? `<div class="status ${error ? 'error' : ''}">${escapeHtml(text)}</div>` : ''
   }
 }
 
@@ -289,35 +410,34 @@ async function readErrorPayload(response: Response): Promise<ApiErrorPayload | n
   }
 }
 
-function formatAddressError(error: unknown): string {
+function formatError(error: unknown, context: 'address' | 'estimate' | 'quote'): string {
   const apiError = asApiError(error)
-  if (!apiError) return 'Kunne ikke hente adresser. Tjek at gatewayen kører.'
+  
+  if (!apiError) {
+    const url = context === 'estimate' || context === 'quote' ? 'http://localhost:4010' : ''
+    return url
+      ? `Kunne ikke kontakte gatewayen. Tjek at ${url} kører.`
+      : 'Kunne ikke hente adresser. Tjek at gatewayen kører.'
+  }
+
+  if (context === 'estimate') {
+    if (apiError.code === 'bbr_configuration_error') {
+      return `BBR mangler opsætning (${apiError.status}): ${apiError.message}`
+    }
+    if (apiError.code === 'bbr_lookup_error') {
+      return `BBR-opslag fejlede (${apiError.status}): ${apiError.message}`
+    }
+    if (apiError.code === 'validation_error') {
+      return `Adressedata er ikke komplette (${apiError.status}): vælg en adresse fra listen igen.`
+    }
+    return `Kunne ikke beregne estimat (${apiError.status}): ${apiError.message}`
+  }
+
+  if (context === 'quote') {
+    return `Kunne ikke sende forespørgslen (${apiError.status}): ${apiError.message}`
+  }
+
   return `Kunne ikke hente adresser (${apiError.status}): ${apiError.message}`
-}
-
-function formatEstimateError(error: unknown): string {
-  const apiError = asApiError(error)
-  if (!apiError) return 'Kunne ikke kontakte gatewayen. Tjek at http://localhost:4010 kører.'
-
-  if (apiError.code === 'bbr_configuration_error') {
-    return `BBR mangler opsætning (${apiError.status}): ${apiError.message}`
-  }
-
-  if (apiError.code === 'bbr_lookup_error') {
-    return `BBR-opslag fejlede (${apiError.status}): ${apiError.message}`
-  }
-
-  if (apiError.code === 'validation_error') {
-    return `Adressedata er ikke komplette (${apiError.status}): vælg en adresse fra listen igen.`
-  }
-
-  return `Kunne ikke beregne estimat (${apiError.status}): ${apiError.message}`
-}
-
-function formatQuoteError(error: unknown): string {
-  const apiError = asApiError(error)
-  if (!apiError) return 'Kunne ikke kontakte gatewayen. Tjek at http://localhost:4010 kører.'
-  return `Kunne ikke sende forespørgslen (${apiError.status}): ${apiError.message}`
 }
 
 function asApiError(error: unknown): ApiClientError | null {
