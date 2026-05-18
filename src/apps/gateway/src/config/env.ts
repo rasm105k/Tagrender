@@ -6,6 +6,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().optional(),
   DATAFORDELEREN_API_KEY: z.string().optional(),
   DATAFORDELEREN_BBR_GRAPHQL_URL: z.string().url().default('https://graphql.datafordeler.dk/BBR/v1'),
+  QUOTE_WORKER_URL: z.string().url().optional(),
   QUOTE_WORKER_CALLBACK_URL: z.string().url().optional(),
 })
 

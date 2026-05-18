@@ -6,8 +6,10 @@ services:
     ports:
       - "3000:3000"
     environment:
+      - GATEWAY_PORT=3000
       - DATABASE_URL=postgresql://tagrende:tagrende@postgres:5432/tagrende_quote
       - REDIS_URL=redis://redis:6379
+      - QUOTE_WORKER_URL=http://worker:4020
     depends_on:
       - postgres
       - redis

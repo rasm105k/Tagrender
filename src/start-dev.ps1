@@ -129,6 +129,7 @@ Stop-ProjectPorts
 Start-Sleep -Seconds 1
 
 Write-Step "Starting app services"
+$env:QUOTE_WORKER_URL = "http://localhost:4020"
 $processes = @()
 $processes += Start-LoggedProcess -Name "gateway" -FilePath "npm.cmd" -ArgumentList @("run", "dev:run", "-w", "@tagrende-quote/gateway") -WorkingDirectory $Root
 $processes += Start-LoggedProcess -Name "worker" -FilePath $WorkerPython -ArgumentList @("-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "4020", "--reload") -WorkingDirectory $WorkerDir

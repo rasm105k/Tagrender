@@ -20,5 +20,7 @@ RUN pip install --no-cache-dir -r requirements-vision.txt
 # Kopier kildekoden
 COPY app/ ./app
 
-# Start-kommando (Ret her til celerys start-kommando, hvis du kører Celery, f.eks.: celery -A app.worker worker)
-CMD ["python", "app/main.py"]
+EXPOSE 4020
+
+# Start FastAPI worker API for synchronous model verification calls from the gateway.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "4020"]

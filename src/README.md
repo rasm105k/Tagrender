@@ -51,6 +51,13 @@ python -m venv .venv
 .venv\Scripts\python -m uvicorn app.main:app --reload --port 4020
 ```
 
+Lad gatewayen kalde workerens billedmodel direkte ved quote request:
+
+```powershell
+$env:QUOTE_WORKER_URL="http://localhost:4020"
+npm run dev:gateway
+```
+
 Redis/Postgres lokalt:
 
 ```powershell

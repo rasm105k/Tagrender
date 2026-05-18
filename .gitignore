@@ -23,6 +23,8 @@ build/
 .env.local
 .env.*.local
 
+.pyc
+
 # Logs
 *.log
 logs/

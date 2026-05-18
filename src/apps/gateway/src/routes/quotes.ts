@@ -1,10 +1,12 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { addressSchema } from './estimates.js'
+import { env } from '../config/env.js'
 import { BbrService } from '../services/bbr.js'
 import { calculateInstantEstimate } from '../services/pricing.js'
 import { QuoteQueue } from '../services/queue.js'
 import { QuoteRepository } from '../services/quotes.js'
+import { QuoteWorkerClient } from '../services/worker.js'
 
 const requestQuoteSchema = z.object({
   address: addressSchema,
@@ -32,6 +34,7 @@ const verifiedQuoteSchema = z.object({
 export async function registerQuoteRoutes(app: FastifyInstance, repository: QuoteRepository) {
   const bbr = new BbrService()
   const queue = new QuoteQueue()
+  const worker = new QuoteWorkerClient(env.QUOTE_WORKER_URL)
 
   app.get('/api/quotes', async () => repository.list())
 
@@ -54,6 +57,27 @@ export async function registerQuoteRoutes(app: FastifyInstance, repository: Quot
       estimate: body.estimateId ? { ...estimate, estimateId: body.estimateId } : estimate,
       customer: body.customer,
     })
+
+    if (worker.isEnabled) {
+      repository.updateStatus(quote.quoteId, 'processing')
+      try {
+        const verified = await worker.verify(quote)
+        const updated = verified ? repository.updateVerified(quote.quoteId, verified) : undefined
+        return reply.code(202).send({
+          quoteId: quote.quoteId,
+          status: updated?.status ?? 'failed',
+          verification: updated?.verified ? 'completed' : 'failed',
+        })
+      } catch (error) {
+        request.log.error({ error, quoteId: quote.quoteId }, 'Quote worker verification failed')
+        repository.updateStatus(quote.quoteId, 'failed')
+        return reply.code(202).send({
+          quoteId: quote.quoteId,
+          status: 'failed',
+          verification: 'failed',
+        })
+      }
+    }
 
     const queueStatus = await queue.enqueue(quote)
     if (queueStatus === 'failed') {
