@@ -5,7 +5,8 @@ const envSchema = z.object({
   REDIS_URL: z.string().optional(),
   DATABASE_URL: z.string().optional(),
   DATAFORDELEREN_API_KEY: z.string().optional(),
-  DATAFORDELEREN_BBR_GRAPHQL_URL: z.string().url().default('https://graphql.datafordeler.dk/BBR/v1')
+  DATAFORDELEREN_BBR_GRAPHQL_URL: z.string().url().default('https://graphql.datafordeler.dk/BBR/v1'),
+  QUOTE_WORKER_URL: z.string().optional(),
 })
 
 export const env = envSchema.parse(process.env)

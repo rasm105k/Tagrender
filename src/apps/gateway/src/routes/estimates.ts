@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { BbrService } from '../services/bbr.js'
+import type { BbrService } from '../services/bbr.js'
 import { calculateInstantEstimate } from '../services/pricing.js'
 
 const coordinateSchema = z.object({
@@ -25,9 +25,7 @@ const instantEstimateSchema = z.object({
   address: addressSchema,
 })
 
-export async function registerEstimateRoutes(app: FastifyInstance) {
-  const bbr = new BbrService()
-
+export async function registerEstimateRoutes(app: FastifyInstance, bbr: BbrService) {
   app.post('/api/estimates/instant', async request => {
     const body = instantEstimateSchema.parse(request.body)
     const facts = await bbr.getBuildingFacts(body.address)

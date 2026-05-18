@@ -376,8 +376,12 @@ export class TagrendeQuoteWidget {
     return this.options.tenantKey ? { 'x-tenant-key': this.options.tenantKey } : {}
   }
 
-  private el<T extends Element = Element>(selector: string, ctor?: new () => T): T {
-    return this.root.querySelector(selector) as T
+  private el<T extends Element = Element>(selector: string): T {
+    const element = this.root.querySelector(selector)
+    if (!element) {
+      throw new Error(`Element not found: ${selector}`)
+    }
+    return element as T
   }
 
   private setStatus(text: string, error = false) {

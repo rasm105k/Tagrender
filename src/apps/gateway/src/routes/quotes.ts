@@ -1,12 +1,11 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { addressSchema } from './estimates.js'
-import { env } from '../config/env.js'
-import { BbrService } from '../services/bbr.js'
+import type { BbrService } from '../services/bbr.js'
 import { calculateInstantEstimate } from '../services/pricing.js'
-import { QuoteQueue } from '../services/queue.js'
-import { QuoteRepository } from '../services/quotes.js'
-import { QuoteWorkerClient } from '../services/worker.js'
+import type { QuoteQueue } from '../services/queue.js'
+import type { QuoteRepository } from '../services/quotes.js'
+import type { QuoteWorkerClient } from '../services/worker.js'
+import { addressSchema } from './estimates.js'
 
 const requestQuoteSchema = z.object({
   address: addressSchema,
@@ -31,11 +30,13 @@ const verifiedQuoteSchema = z.object({
   notes: z.array(z.string()).default([]),
 })
 
-export async function registerQuoteRoutes(app: FastifyInstance, repository: QuoteRepository) {
-  const bbr = new BbrService()
-  const queue = new QuoteQueue()
-  const worker = new QuoteWorkerClient("http://localhost:4020")
-
+export async function registerQuoteRoutes(
+  app: FastifyInstance,
+  repository: QuoteRepository,
+  bbr: BbrService,
+  queue: QuoteQueue,
+  worker: QuoteWorkerClient,
+) {
   app.get('/api/quotes', async () => repository.list())
 
   app.get('/api/quotes/:quoteId', async (request, reply) => {
