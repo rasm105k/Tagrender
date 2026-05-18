@@ -37,3 +37,6 @@ Thumbs.db
 # Temporary
 *.tmp
 .cache/
+
+# Generated training data
+src/danske_luftfotos/
