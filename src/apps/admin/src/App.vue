@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import L from 'leaflet'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { getGatewayUrl, getQuote, listQuotes } from './api'
+import { computed, onMounted, ref, watch } from 'vue'
+import { baseUrl, getQuote, listQuotes } from './api'
 import type { QuoteRecord } from './types'
 
 const quotes = ref<QuoteRecord[]>([])
@@ -23,8 +23,7 @@ onMounted(async () => {
   await refreshQuotes()
 })
 
-watch(selected, async () => {
-  await nextTick()
+watch(selected, () => {
   renderMap()
 })
 
@@ -57,7 +56,6 @@ function renderMap() {
     map = L.map(mapElement.value, {
       zoomControl: false,
       attributionControl: false,
-      dragging: true,
       scrollWheelZoom: false,
     }).setView([center.lat, center.lon], 19)
 
@@ -69,7 +67,6 @@ function renderMap() {
   map.setView([center.lat, center.lon], 19)
   if (polygonLayer) {
     polygonLayer.remove()
-    polygonLayer = null
   }
   if (polygon) {
     polygonLayer = L.polygon(
@@ -107,7 +104,7 @@ function formatDate(value: string) {
     </section>
 
     <section v-if="error" class="notice">
-      {{ error }} Gateway: {{ getGatewayUrl() }}
+      {{ error }} Gateway: {{ baseUrl }}
     </section>
 
     <section class="layout">
